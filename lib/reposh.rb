@@ -2,6 +2,7 @@ require 'readline'
 require 'yaml'
 require 'optparse'
 require 'pathname'
+require 'english'
 
 class Hash
   def recursive_merge(other)
@@ -130,6 +131,7 @@ class Reposh
     def initialize(binpath, default_cmd, pathext)
       @binpath, @default_cmd, @pathext = binpath, default_cmd, pathext
       @commands = []
+      @background_processes = []
       register_builtin_commands
     end
 
@@ -220,6 +222,15 @@ class Reposh
 
     #require 'shell'
     def execute(cmd)
+      if RUBY_VERSION >= '1.9.0' && /[&] \z/xmo =~ cmd.rstrip
+        spawn_execute($PREMATCH)
+      else
+        waiting_execute(cmd)
+      end
+      check_background_processes()
+    end
+
+    def waiting_execute(cmd)
       stat = false
       ([""] + @pathext).each do |ext|
         command = add_ext(cmd, ext)
@@ -228,6 +239,38 @@ class Reposh
         result = system(command)
         return if result
         stat = $?
+      end
+      puts "reposh: failed to exec '#{cmd}': status #{stat.exitstatus}"
+    end
+
+    def check_background_processes
+      background_processes  = @background_processes
+      @background_processes = []
+      background_processes.each do |pid, cmd|
+        if !Process.waitpid(pid, Process::WNOHANG)
+          @background_processes << [pid, cmd]
+          next
+        end
+        if $?.exitstatus.zero?
+          puts "reposh: done '#{cmd}'"
+          next
+        end
+        puts "reposh: failed to exec '#{cmd}': pid #{pid}, status #{$?.exitstatus}"
+      end
+    end
+
+    def spawn_execute(cmd)
+      stat = nil
+      ([""] + @pathext).each do |ext|
+        command = add_ext(cmd, ext)
+        puts command if @trace_mode
+        pid = spawn(cmd)
+        if !Process.waitpid(pid, Process::WNOHANG)
+          @background_processes << [pid, cmd]
+          return
+        end
+        stat = $?
+        return if stat.exitstatus.zero?
       end
       puts "reposh: failed to exec '#{cmd}': status #{stat.exitstatus}"
     end
