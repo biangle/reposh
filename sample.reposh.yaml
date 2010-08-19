@@ -15,6 +15,8 @@ global:
 system:
   default:  # for all vcs
     prompt: "> "
+  git:
+    prompt: "{git_ps1}> "
   svn:
     binpath: svn
   svk:

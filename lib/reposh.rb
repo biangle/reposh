@@ -94,6 +94,7 @@ class Reposh
     loop do
       case 
       when (base + ".git").directory?
+        @git_base = base
         return "git"
       when (base + ".hg").directory?
         return "hg"
@@ -122,9 +123,21 @@ class Reposh
 
     puts "Welcome to reposh #{VERSION} (mode: #{@system_name})"
     loop do
-      cmd = Readline.readline(@prompt, true)
+      cmd = Readline.readline(prompt, true)
       @commands.dispatch(cmd, @system_name)
     end
+  end
+
+  def prompt
+    @prompt.gsub(/\{git_ps1\}/){
+      begin
+        require 'grit'
+      rescue LoadError
+        raise "Grit is not available. If you want to use {git_ps1} keyword, please install it: sudo gem install grit"
+      end
+      @git_repo ||= Grit::Repo.new(@git_base)
+      @git_repo.head.name
+    }
   end
 
   class Commands
